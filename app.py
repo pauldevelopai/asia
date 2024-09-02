@@ -11,12 +11,9 @@ load_dotenv()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-import os
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship, declarative_base
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
-from dotenv import load_dotenv
 from pydub import AudioSegment
 import io
 import tempfile
@@ -28,7 +25,6 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY")
 
-
 # Set up SQLAlchemy
 DATABASE_URI = f"sqlite:///podcasts.db"  # Database location
 engine = create_engine(DATABASE_URI)
@@ -37,8 +33,6 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 # Define your models
-from sqlalchemy import DateTime  # Import this
-
 class Podcast(Base):
     __tablename__ = 'podcast'
     id = Column(Integer, primary_key=True)
@@ -48,7 +42,7 @@ class Podcast(Base):
     host2 = Column(Text)
     host3 = Column(Text)
     research = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)  # Use DateTime here
+    created_at = Column(DateTime, default=datetime.utcnow)
     scripts = relationship('Script', backref='podcast', lazy=True)
 
 class Script(Base):
@@ -57,9 +51,9 @@ class Script(Base):
     podcast_id = Column(Integer, ForeignKey('podcast.id'), nullable=False)
     content = Column(Text, nullable=False)
     research_url = Column(String(255))
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)  # Use DateTime here
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-# Create the tables if they don’t exist
+# Create the tables if they don't exist
 Base.metadata.create_all(engine)
 
 # Streamlit UI
@@ -126,33 +120,6 @@ def save_script_in_db(podcast_name, description, hosts, script_content, research
 
     return new_script
 
-if st.button("Generate Podcast Script", key="generate_script"):
-    # Your existing code to generate the podcast script
-    if name and description:
-        research_content = fetch_content_from_url(research_url)
-        if research_content:
-            script_content = generate_podcast_script(name, description, [host1, host2, host3], research_content)
-            st.session_state.script_content = script_content  # Store script content in session state
-
-            # Save the script in the database
-            saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url)
-            st.success("Podcast script generated and saved successfully!")
-            st.write(script_content)
-        else:
-            st.error("Failed to fetch or generate content.")
-    else:
-        st.error("Please fill out the required fields.")
-
-if "script_content" in st.session_state:
-    if st.button("Generate Audio", key="generate_audio"):
-        script_content = st.session_state.script_content  # Retrieve script content from session state
-        audio_data = generate_audio(script_content)
-        if audio_data:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-                temp_file.write(audio_data)
-                st.audio(temp_file.name, format="audio/mp3")
-                st.download_button(label="Download Audio", data=audio_data, file_name="podcast_audio.mp3")
-
 # Function to generate audio using Eleven Labs API
 def generate_audio(script):
     headers = {
@@ -166,9 +133,11 @@ def generate_audio(script):
             'similarity_boost': 0.75
         }
     }
-    response = requests.post('https://api.elevenlabs.io/v1/text-to-speech', headers=headers, json=payload)
+    url = 'https://api.elevenlabs.io/v1/text-to-speech'  # Verify this URL
+    response = requests.post(url, headers=headers, json=payload)
     if response.status_code != 200:
         st.error(f"Failed to create audio: {response.status_code} - {response.text}")
+        st.write(response.json())  # Log the full response for debugging
         return None
     return response.content
 
@@ -185,7 +154,7 @@ selected_script_id = st.selectbox("Select an old script to import", options=list
 
 # Button to import the selected script
 if st.button("Import Script"):
-    selected_script = session.query(Script).get(script_options[selected_script_id])
+    selected_script = session.get(Script, script_options[selected_script_id])
     if selected_script:
         st.session_state.script_content = selected_script.content
         st.success("Script imported successfully!")
@@ -193,7 +162,24 @@ if st.button("Import Script"):
     else:
         st.error("Failed to import script.")
 
-# Ensure the function is defined before this point
+# Button to generate podcast script
+if st.button("Generate Podcast Script", key="generate_script"):
+    if name and description:
+        research_content = fetch_content_from_url(research_url)
+        if research_content:
+            script_content = generate_podcast_script(name, description, [host1, host2, host3], research_content)
+            st.session_state.script_content = script_content  # Store script content in session state
+
+            # Save the script in the database
+            saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url)
+            st.success("Podcast script generated and saved successfully!")
+            st.write(script_content)
+        else:
+            st.error("Failed to fetch or generate content.")
+    else:
+        st.error("Please fill out the required fields.")
+
+# Button to generate audio from the script
 if "script_content" in st.session_state:
     if st.button("Generate Audio"):
         script_content = st.session_state.script_content  # Retrieve script content from session state
@@ -203,47 +189,3 @@ if "script_content" in st.session_state:
                 temp_file.write(audio_data)
                 st.audio(temp_file.name, format="audio/mp3")
                 st.download_button(label="Download Audio", data=audio_data, file_name="podcast_audio.mp3")
-
-# Submit button to save podcast info and generate script
-if st.button("Generate Podcast Script"):
-    if name and description:
-        # Save podcast info
-        new_podcast = Podcast(
-            name=name,
-            description=description,
-            host1=host1,
-            host2=host2,
-            host3=host3,
-            research=research_url
-        )
-        session.add(new_podcast)
-        session.commit()
-
-        # Fetch content from the research URL and generate the script
-        research_content = fetch_content_from_url(research_url)
-        if research_content:
-            script_content = generate_podcast_script(name, description, [host1, host2, host3], research_content)
-            st.success("Podcast script generated successfully!")
-            st.write(script_content)
-
-            # Generate audio
-            if st.button("Generate Audio"):
-                audio_data = generate_audio(script_content)
-                if audio_data:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-                        temp_file.write(audio_data)
-                        st.audio(temp_file.name, format="audio/mp3")
-                        st.download_button(label="Download Audio", data=audio_data, file_name="podcast_audio.mp3")
-
-                # Save the script to the database
-                new_script = Script(
-                    podcast_id=new_podcast.id,
-                    content=script_content,
-                    research_url=research_url
-                )
-                session.add(new_script)
-                session.commit()
-        else:
-            st.error("Failed to fetch or generate content.")
-    else:
-        st.error("Please fill out the required fields.")
