@@ -14,7 +14,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 import os
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import sessionmaker, relationship, declarative_base
 from datetime import datetime
 from dotenv import load_dotenv
 from pydub import AudioSegment
@@ -171,6 +171,27 @@ def generate_audio(script):
         st.error(f"Failed to create audio: {response.status_code} - {response.text}")
         return None
     return response.content
+
+# Function to fetch old scripts from the database
+def fetch_old_scripts():
+    return session.query(Script).all()
+
+# Fetch old scripts for the dropdown menu
+old_scripts = fetch_old_scripts()
+script_options = {f"{script.podcast.name} - {script.created_at}": script.id for script in old_scripts}
+
+# Dropdown menu to select an old script
+selected_script_id = st.selectbox("Select an old script to import", options=list(script_options.keys()))
+
+# Button to import the selected script
+if st.button("Import Script"):
+    selected_script = session.query(Script).get(script_options[selected_script_id])
+    if selected_script:
+        st.session_state.script_content = selected_script.content
+        st.success("Script imported successfully!")
+        st.write(selected_script.content)
+    else:
+        st.error("Failed to import script.")
 
 # Ensure the function is defined before this point
 if "script_content" in st.session_state:
