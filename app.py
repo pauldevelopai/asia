@@ -2,14 +2,9 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from openai import OpenAI
-
 from dotenv import load_dotenv
 import os
-
-# Load environment variables from .env file
-load_dotenv()
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+import logging  # Import the logging module
 
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
@@ -17,6 +12,14 @@ from datetime import datetime
 from pydub import AudioSegment
 import io
 import tempfile
+
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Load environment variables from .env file
+load_dotenv()
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Load environment variables
 load_dotenv()
@@ -131,14 +134,27 @@ def generate_audio(script):
         'voice_settings': {
             'stability': 0.75,
             'similarity_boost': 0.75
-        }
+        },
+        'speaker_name': 'Alice',  # Ensure this matches your API requirements
+        'voice_id': 'Xb7hH8MSUJpSbSDYk0k2',  # Ensure this matches your API requirements
+        'category': 'cloned'  # Ensure this matches your API requirements
     }
-    url = 'https://api.elevenlabs.io/v1/text-to-speech'  # Verify this URL
+    url = 'https://api.elevenlabs.io/v1/text-to-speech/Xb7hH8MSUJpSbSDYk0k2'  # Verify this URL
+
+    # Log the request details
+    logging.debug(f"Making API call to {url} with payload: {payload}")
+
     response = requests.post(url, headers=headers, json=payload)
+
+    # Log the response details
+    logging.debug(f"API response status: {response.status_code}")
+    logging.debug(f"API response text: {response.text}")
+
     if response.status_code != 200:
         st.error(f"Failed to create audio: {response.status_code} - {response.text}")
         st.write(response.json())  # Log the full response for debugging
         return None
+
     return response.content
 
 # Function to fetch old scripts from the database
