@@ -12,23 +12,30 @@ from pydub import AudioSegment
 import io
 import tempfile
 
+# Load environment variables from .env file
+load_dotenv()
+
+# Get the API keys from the environment variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY")
+
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY not found in environment variables")
+
+if not ELEVEN_LABS_API_KEY:
+    raise ValueError("ELEVEN_LABS_API_KEY not found in environment variables")
+
+# Print the loaded API key for verification
+print(f"Loaded OpenAI API Key: {OPENAI_API_KEY[:5]}...")
+
+# Initialize the OpenAI client with the API key
+openai.api_key = OPENAI_API_KEY
+
 # Add the logo with specified width
 st.image("logo.jpeg", width=150)  # Adjust the width as needed
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
-
-# Load environment variables from .env file
-load_dotenv()
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# Load environment variables
-load_dotenv()
-
-# OpenAI and Eleven Labs API keys
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY")
 
 # Set up SQLAlchemy
 DATABASE_URI = f"sqlite:///podcasts.db"  # Database location
