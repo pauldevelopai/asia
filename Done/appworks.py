@@ -99,34 +99,20 @@ def fetch_content_from_url(url):
         st.error(f"Failed to fetch research content: {e}")
         return ""
 
-# Function to extract 20 facts from content using OpenAI
-def extract_facts_from_content(content):
-    prompt = f"Extract 20 interesting facts from the following content:\n\n{content}"
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    return response.choices[0].message.content.strip()
-
 # Function to generate podcast script using OpenAI
-def generate_podcast_script(name, description, hosts, facts):
+def generate_podcast_script(name, description, hosts, research_content):
     current_date = datetime.now()
     prompt = f"""Create a podcast script for the show called "{name}". The show is about {description}. Do not put emotions of speakers in brackets. Be sure to mention "{current_date.strftime('%B %d, %Y')}" but in a casual way. Always have the person's name before someone speaks. {hosts[0]} will introduce co-host {hosts[1]} and the main topic they want to talk about. {hosts[0]} is occasionally excited but is generally positive about the world and {hosts[1]} will be logical, but can be negative. At the very start {hosts[0]} and {hosts[1]} chat together in a friendly way and relate the day's stories to their own lives. They won't ask each other directly how the other one is feeling. In every script they have a different emotion and personal anecdote and a different reason for feeling that. They do not talk about the weather. They are joined by {hosts[2]} who will introduce himself and explain that he will make a prediction of what will happen next in each story over the following week, his prediction is usually negative as he believes we should burn the world down and start again. {hosts[0]}, {hosts[1]}, and {hosts[2]} need to all speak like they have known each other for years. Discuss the following. This is just the first segment, end the segment promising more in the next segment.
 
-    Facts:
-    {facts}
+    Research Content:
+    {research_content}
     """
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
-        ]
-    )
+    response = client.chat.completions.create(model="gpt-4",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": prompt}
+    ])
 
     return response.choices[0].message.content.strip()
 
@@ -227,16 +213,11 @@ if st.button("Generate Podcast Script", key="generate_script"):
     if name and description:
         research_content = fetch_content_from_url(research_url)
         if research_content:
-            facts = extract_facts_from_content(research_content)
-            script_content = generate_podcast_script(name, description, [host1, host2, host3], facts)
+            script_content = generate_podcast_script(name, description, [host1, host2, host3], research_content)
             st.session_state.script_content = script_content  # Store script content in session state
 
             # Display the generated script in an editable text area
             st.session_state.script_content = st.text_area("Generated Script", value=script_content, height=300)
-
-            # Display the extracted facts in the sidebar
-            st.sidebar.header("Extracted Facts")
-            st.sidebar.text_area("Facts", value=facts, height=300)
 
             # Save the script in the database
             saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url)
@@ -248,8 +229,6 @@ if st.button("Generate Podcast Script", key="generate_script"):
 
 # Button to generate audio from the script
 if "script_content" in st.session_state:
-    st.text_area("Generated Script", value=st.session_state.script_content, height=300)
-    st.sidebar.text_area("Facts", value=facts, height=300)
     if st.button("Generate Audio"):
         script_content = st.session_state.script_content  # Retrieve script content from session state
         voices = {
