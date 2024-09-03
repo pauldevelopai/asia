@@ -59,6 +59,23 @@ class Script(Base):
 # Create the tables if they don't exist
 Base.metadata.create_all(engine)
 
+# Function to fetch available voices from Eleven Labs
+def fetch_available_voices():
+    url = 'https://api.elevenlabs.io/v1/voices'
+    headers = {
+        'xi-api-key': ELEVEN_LABS_API_KEY
+    }
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        voices = response.json().get('voices', [])
+        return {voice['name']: voice['voice_id'] for voice in voices}
+    else:
+        st.error(f"Failed to fetch voices: {response.status_code} - {response.text}")
+        return {}
+
+# Fetch available voices
+available_voices = fetch_available_voices()
+
 # Streamlit UI
 st.title("Burn It Down Podcast Generator")
 
@@ -66,8 +83,11 @@ st.title("Burn It Down Podcast Generator")
 name = st.text_input("Podcast Name", value="Burn It Down")
 description = st.text_area("Podcast Description", value="about how technology and AI is changing our world, for good and bad.")
 host1 = st.text_input("Host 1", value="Amina Ahmed")
+host1_voice = st.selectbox("Voice for Host 1", options=list(available_voices.keys()))
 host2 = st.text_input("Host 2", value="Will Adams")
+host2_voice = st.selectbox("Voice for Host 2", options=list(available_voices.keys()))
 host3 = st.text_input("Host 3", value="Khaya Dlanga")
+host3_voice = st.selectbox("Voice for Host 3", options=list(available_voices.keys()))
 research_url = st.text_input("Research URL", value="")
 
 # Function to fetch research content
@@ -122,7 +142,7 @@ def save_script_in_db(podcast_name, description, hosts, script_content, research
     return new_script
 
 # Function to generate audio using Eleven Labs API
-def generate_audio(script):
+def generate_audio(script, voices):
     headers = {
         'Content-Type': 'application/json',
         'xi-api-key': ELEVEN_LABS_API_KEY
@@ -133,8 +153,8 @@ def generate_audio(script):
             'stability': 0.75,
             'similarity_boost': 0.75
         },
-        'speaker_name': 'Alice',  # Ensure this matches your API requirements
-        'voice_id': 'Xb7hH8MSUJpSbSDYk0k2',  # Ensure this matches your API requirements
+        'speaker_name': voices['speaker_name'],  # Ensure this matches your API requirements
+        'voice_id': voices['voice_id'],  # Ensure this matches your API requirements
         'category': 'cloned'  # Ensure this matches your API requirements
     }
     url = 'https://api.elevenlabs.io/v1/text-to-speech/Xb7hH8MSUJpSbSDYk0k2'  # Verify this URL
@@ -197,7 +217,11 @@ if st.button("Generate Podcast Script", key="generate_script"):
 if "script_content" in st.session_state:
     if st.button("Generate Audio"):
         script_content = st.session_state.script_content  # Retrieve script content from session state
-        audio_data = generate_audio(script_content)
+        voices = {
+            'speaker_name': [host1_voice, host2_voice, host3_voice],
+            'voice_id': [available_voices[host1_voice], available_voices[host2_voice], available_voices[host3_voice]]
+        }
+        audio_data = generate_audio(script_content, voices)
         if audio_data:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
                 temp_file.write(audio_data)
