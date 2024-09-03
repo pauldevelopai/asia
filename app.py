@@ -88,7 +88,6 @@ host2 = st.text_input("Host 2", value="Will Adams")
 host2_voice = st.selectbox("Voice for Host 2", options=list(available_voices.keys()))
 host3 = st.text_input("Host 3", value="Khaya Dlanga")
 host3_voice = st.selectbox("Voice for Host 3", options=list(available_voices.keys()))
-research_url = st.text_input("Research URL", value="")
 
 # Input for Google News keywords
 keywords = st.text_input("Google News Keywords", value="tech and media and AI")
@@ -160,7 +159,7 @@ if st.button("Scrape Google News"):
 
 # Display scraped stories in a dropdown menu
 if "stories" in st.session_state:
-    story_options = {story['title']: story['link'] for story in st.session_state.stories}
+    story_options = {f"{story['title']} - {story['link']}": story['link'] for story in st.session_state.stories}
     selected_story = st.selectbox("Select a story", options=list(story_options.keys()))
 
     # Button to use the selected story
@@ -312,33 +311,38 @@ if st.button("Import Script"):
 # Button to generate podcast script
 if st.button("Generate Podcast Script", key="generate_script"):
     if name and description:
-        research_content = fetch_content_from_url(research_url)
-        if research_content:
-            facts = extract_facts_from_content(research_content)
-            st.session_state.facts = facts  # Store facts in session state
-            script_content = generate_podcast_script(name, description, [host1, host2, host3], facts)
-            st.session_state.script_content = script_content  # Store script content in session state
+        research_url = st.session_state.get("research_url", "")
+        if research_url:
+            research_content = fetch_content_from_url(research_url)
+            st.write(f"Fetched content: {research_content[:500]}...")  # Log the fetched content
+            if research_content:
+                facts = extract_facts_from_content(research_content)
+                st.session_state.facts = facts  # Store facts in session state
+                script_content = generate_podcast_script(name, description, [host1, host2, host3], facts)
+                st.session_state.script_content = script_content  # Store script content in session state
 
-            # Display the generated script in an editable text area
-            st.session_state.script_content = st.text_area("Generated Script", value=script_content, height=300)
+                # Display the generated script in an editable text area
+                st.session_state.script_content = st.text_area("Generated Script", value=script_content, height=300)
 
-            # Display the extracted facts in the sidebar
-            st.sidebar.header("Extracted Facts")
-            st.sidebar.text_area("Facts", value=facts, height=300)
+                # Display the extracted facts in the sidebar
+                st.sidebar.header("Extracted Facts")
+                st.sidebar.text_area("Facts", value=facts, height=300)
 
-            # Generate audio
-            voices = {
-                host1: available_voices[host1_voice],
-                host2: available_voices[host2_voice],
-                host3: available_voices[host3_voice]
-            }
-            audio_file_path = generate_audio(script_content, voices)
-            if audio_file_path:
-                # Save the script and audio in the database
-                saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url, audio_file_path)
-                st.success("Podcast script and audio generated and saved successfully!")
+                # Generate audio
+                voices = {
+                    host1: available_voices[host1_voice],
+                    host2: available_voices[host2_voice],
+                    host3: available_voices[host3_voice]
+                }
+                audio_file_path = generate_audio(script_content, voices)
+                if audio_file_path:
+                    # Save the script and audio in the database
+                    saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url, audio_file_path)
+                    st.success("Podcast script and audio generated and saved successfully!")
+            else:
+                st.error("Failed to fetch or generate content.")
         else:
-            st.error("Failed to fetch or generate content.")
+            st.error("Research URL is empty. Please select a story first.")
     else:
         st.error("Please fill out the required fields.")
 
