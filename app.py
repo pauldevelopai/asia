@@ -116,7 +116,7 @@ def scrape_news(keywords):
 available_voices = fetch_available_voices()
 
 # Streamlit UI
-st.title("Burn It Down Podcast Generator")
+st.title("Develop AI Podcast Generator")
 
 # Input for podcast information
 name = st.text_input("Podcast Name", value="Burn It Down")
@@ -127,6 +127,11 @@ host2 = st.text_input("Host 2", value="Will Adams")
 host2_voice = st.selectbox("Voice for Host 2", options=list(available_voices.keys()))
 host3 = st.text_input("Host 3", value="Khaya Dlanga")
 host3_voice = st.selectbox("Voice for Host 3", options=list(available_voices.keys()))
+
+# Input for host personalities
+host1_personality = st.text_area("Personality for Host 1", value="occasionally excited but generally positive about the world")
+host2_personality = st.text_area("Personality for Host 2", value="logical, but can be negative")
+host3_personality = st.text_area("Personality for Host 3", value="believes we should burn the world down and start again")
 
 # Input for news keywords
 keywords = st.text_input("News Keywords", value="tech and media and AI")
@@ -144,11 +149,16 @@ if st.button("Scrape News"):
 def fetch_content_from_url(url):
     try:
         response = requests.get(url)
+        response.raise_for_status()  # Raise an HTTPError for bad responses
         soup = BeautifulSoup(response.content, 'html.parser')
         paragraphs = soup.find_all('p')
         content = "\n".join([para.get_text() for para in paragraphs])
+        if not content:
+            logging.error("No content found in the fetched URL.")
+            st.error("No content found in the fetched URL.")
         return content
     except requests.RequestException as e:
+        logging.error(f"Failed to fetch research content: {e}")
         st.error(f"Failed to fetch research content: {e}")
         return ""
 
@@ -165,9 +175,9 @@ def extract_facts_from_content(content):
     return response.choices[0].message.content.strip()
 
 # Function to generate podcast script using OpenAI
-def generate_podcast_script(name, description, hosts, facts):
+def generate_podcast_script(name, description, hosts, personalities, facts):
     current_date = datetime.now()
-    prompt = f"""Create a podcast script for the show called "{name}". The show is about {description}. Do not put emotions of speakers in brackets. Be sure to mention "{current_date.strftime('%B %d, %Y')}" but in a casual way. Always have the person's name before someone speaks. {hosts[0]} will introduce co-host {hosts[1]} and the main topic they want to talk about. {hosts[0]} is occasionally excited but is generally positive about the world and {hosts[1]} will be logical, but can be negative. At the very start {hosts[0]} and {hosts[1]} chat together in a friendly way and relate the day's stories to their own lives. They won't ask each other directly how the other one is feeling. In every script they have a different emotion and personal anecdote and a different reason for feeling that. They do not talk about the weather. They are joined by {hosts[2]} who will introduce himself and explain that he will make a prediction of what will happen next in each story over the following week, his prediction is usually negative as he believes we should burn the world down and start again. {hosts[0]}, {hosts[1]}, and {hosts[2]} need to all speak like they have known each other for years. Discuss the following. This is just the first segment, end the segment promising more in the next segment.
+    prompt = f"""Create a podcast script for the show called "{name}". The show is about {description}. Do not put emotions of speakers in brackets. Be sure to mention "{current_date.strftime('%B %d, %Y')}" but in a casual way. Always have the person's name before someone speaks. {hosts[0]} will introduce co-host {hosts[1]} and the main topic they want to talk about. {personalities[0]}. {hosts[1]} will be logical, but can be negative. At the very start {hosts[0]} and {hosts[1]} chat together in a friendly way and relate the day's stories to their own lives. They won't ask each other directly how the other one is feeling. In every script they have a different emotion and personal anecdote and a different reason for feeling that. They do not talk about the weather. They are joined by {hosts[2]} who will introduce himself and explain that he will make a prediction of what will happen next in each story over the following week, his prediction is usually negative as he believes we should burn the world down and start again. {hosts[0]}, {hosts[1]}, and {hosts[2]} need to all speak like they have known each other for years. Discuss the following. This is just the first segment, end the segment promising more in the next segment.
 
     Facts:
     {facts}
@@ -216,7 +226,7 @@ def save_script_in_db(podcast_name, description, hosts, script_content, research
     return new_script
 
 # Function to generate audio using Eleven Labs API
-def generate_audio(script, voices):
+def generate_audio(script, voices, intro_clip=None, outro_clip=None):
     lines = script.split('\n')
     audio_segments = []
 
@@ -248,6 +258,11 @@ def generate_audio(script, voices):
 
             response = requests.post(url, headers=headers, json=data)
 
+            # Debugging statements
+            logging.debug(f"Request data: {data}")
+            logging.debug(f"Response status code: {response.status_code}")
+            logging.debug(f"Response content: {response.content}")
+
             if response.status_code == 200:
                 audio_segment = AudioSegment.from_file(io.BytesIO(response.content), format="mp3")
                 audio_segments.append(audio_segment)
@@ -256,6 +271,13 @@ def generate_audio(script, voices):
 
     if audio_segments:
         combined_audio = sum(audio_segments)
+        
+        # Add intro and outro clips if provided
+        if intro_clip:
+            combined_audio = AudioSegment.from_file(intro_clip) + combined_audio
+        if outro_clip:
+            combined_audio = combined_audio + AudioSegment.from_file(outro_clip)
+        
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
             combined_audio.export(temp_file.name, format="mp3")
             return temp_file.name
@@ -300,20 +322,31 @@ if "stories" in st.session_state:
 st.write("Please copy and paste the actual article URL into the field below if it was not fetched automatically.")
 research_url = st.text_input("Research URL", value=st.session_state.get("research_url", ""))
 
+# Upload boxes for intro and outro music clips
+intro_clip = st.file_uploader("Upload Intro Music Clip", type=["mp3"])
+outro_clip = st.file_uploader("Upload Outro Music Clip", type=["mp3"])
+
 # Button to generate podcast script
 if st.button("Generate Podcast Script", key="generate_script"):
     if name and description:
         if research_url:
             st.write(f"Using research URL: {research_url}")  # Log the research URL
-            research_content = fetch_content_from_url(research_url)
-            if research_content:
-                facts = extract_facts_from_content(research_content)
-                st.session_state.facts = facts  # Store facts in session state
+            if research_url != st.session_state.get("research_url"):
+                research_content = fetch_content_from_url(research_url)
+                if research_content:
+                    facts = extract_facts_from_content(research_content)
+                    st.session_state.facts = facts  # Store facts in session state
+                else:
+                    st.error("Failed to fetch or generate content.")
+                    facts = None
+            else:
+                facts = st.session_state.get("facts")
 
+            if facts:
                 # Ensure all 20 facts are used
                 facts_list = facts.split('\n')
                 if len(facts_list) == 20:
-                    script_content = generate_podcast_script(name, description, [host1, host2, host3], facts)
+                    script_content = generate_podcast_script(name, description, [host1, host2, host3], [host1_personality, host2_personality, host3_personality], facts)
                     st.session_state.script_content = script_content  # Store script content in session state
 
                     # Display the generated script in an editable text area
@@ -329,7 +362,7 @@ if st.button("Generate Podcast Script", key="generate_script"):
                         host2: available_voices[host2_voice],
                         host3: available_voices[host3_voice]
                     }
-                    audio_file_path = generate_audio(script_content, voices)
+                    audio_file_path = generate_audio(script_content, voices, intro_clip, outro_clip)
                     if audio_file_path:
                         # Save the script and audio in the database
                         saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url, audio_file_path)
@@ -359,7 +392,7 @@ if "script_content" in st.session_state:
             host2: available_voices[host2_voice],
             host3: available_voices[host3_voice]
         }
-        audio_file_path = generate_audio(script_content, voices)
+        audio_file_path = generate_audio(script_content, voices, intro_clip, outro_clip)
         if audio_file_path:
             st.audio(audio_file_path, format="audio/mp3")
             with open(audio_file_path, "rb") as file:
