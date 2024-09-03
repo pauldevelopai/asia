@@ -5,7 +5,6 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import logging  # Import the logging module
-
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
@@ -143,37 +142,50 @@ def save_script_in_db(podcast_name, description, hosts, script_content, research
 
 # Function to generate audio using Eleven Labs API
 def generate_audio(script, voices):
-    headers = {
-        'Content-Type': 'application/json',
-        'xi-api-key': ELEVEN_LABS_API_KEY
-    }
-    payload = {
-        'text': script,
-        'voice_settings': {
-            'stability': 0.75,
-            'similarity_boost': 0.75
-        },
-        'speaker_name': voices['speaker_name'],  # Ensure this matches your API requirements
-        'voice_id': voices['voice_id'],  # Ensure this matches your API requirements
-        'category': 'cloned'  # Ensure this matches your API requirements
-    }
-    url = 'https://api.elevenlabs.io/v1/text-to-speech/Xb7hH8MSUJpSbSDYk0k2'  # Verify this URL
+    lines = script.split('\n')
+    audio_segments = []
 
-    # Log the request details
-    logging.debug(f"Making API call to {url} with payload: {payload}")
+    for i, line in enumerate(lines):
+        if ':' in line:
+            name, text = line.split(':', 1)
+            name = name.strip()
+            text = text.strip()
 
-    response = requests.post(url, headers=headers, json=payload)
+            if name in voices:
+                voice_id = voices[name]
+            else:
+                continue
 
-    # Log the response details
-    logging.debug(f"API response status: {response.status_code}")
-    logging.debug(f"API response text: {response.text}")
+            url = f'https://api.elevenlabs.io/v1/text-to-speech/{voice_id}'
+            headers = {
+                'accept': 'audio/mpeg',
+                'xi-api-key': ELEVEN_LABS_API_KEY,
+                'Content-Type': 'application/json'
+            }
+            data = {
+                'text': text,
+                'voice_settings': {
+                    'voice_id': voice_id,
+                    'stability': 0.75,
+                    'similarity_boost': 0.75
+                }
+            }
 
-    if response.status_code != 200:
-        st.error(f"Failed to create audio: {response.status_code} - {response.text}")
-        st.write(response.json())  # Log the full response for debugging
+            response = requests.post(url, headers=headers, json=data)
+
+            if response.status_code == 200:
+                audio_segment = AudioSegment.from_file(io.BytesIO(response.content), format="mp3")
+                audio_segments.append(audio_segment)
+            else:
+                st.error(f"Failed to create audio for line {i+1}: {response.status_code} - {response.text}")
+
+    if audio_segments:
+        combined_audio = sum(audio_segments)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
+            combined_audio.export(temp_file.name, format="mp3")
+            return temp_file.name
+    else:
         return None
-
-    return response.content
 
 # Function to fetch old scripts from the database
 def fetch_old_scripts():
@@ -220,12 +232,12 @@ if "script_content" in st.session_state:
     if st.button("Generate Audio"):
         script_content = st.session_state.script_content  # Retrieve script content from session state
         voices = {
-            'speaker_name': [host1_voice, host2_voice, host3_voice],
-            'voice_id': [available_voices[host1_voice], available_voices[host2_voice], available_voices[host3_voice]]
+            host1: available_voices[host1_voice],
+            host2: available_voices[host2_voice],
+            host3: available_voices[host3_voice]
         }
-        audio_data = generate_audio(script_content, voices)
-        if audio_data:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_file:
-                temp_file.write(audio_data)
-                st.audio(temp_file.name, format="audio/mp3")
-                st.download_button(label="Download Audio", data=audio_data, file_name="podcast_audio.mp3")
+        audio_file_path = generate_audio(script_content, voices)
+        if audio_file_path:
+            st.audio(audio_file_path, format="audio/mp3")
+            with open(audio_file_path, "rb") as file:
+                st.download_button(label="Download Audio", data=file, file_name="podcast_audio.mp3")
