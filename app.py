@@ -92,6 +92,24 @@ host3_voice = st.selectbox("Voice for Host 3", options=list(available_voices.key
 # Input for Google News keywords
 keywords = st.text_input("Google News Keywords", value="tech and media and AI")
 
+# Function to fetch the actual article URL from a Google News link
+def fetch_actual_article_url(google_news_url):
+    try:
+        response = requests.get(google_news_url)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        link_tag = soup.find('a', {'class': 'VDXfz'})
+        if link_tag:
+            actual_url = link_tag['href']
+            if actual_url.startswith('/url?'):
+                actual_url = actual_url.split('&')[0].replace('/url?q=', '')
+            return actual_url
+        else:
+            logging.error("Failed to find the actual article link.")
+            return None
+    except Exception as e:
+        logging.error(f"Failed to fetch actual article URL: {e}")
+        return None
+
 # Function to scrape Google News
 def scrape_google_news(keywords):
     query = "+".join(keywords.split())
@@ -114,13 +132,18 @@ def scrape_google_news(keywords):
     google_news_stories_today = []
     for story in google_news_data_today.find_all("item"):
         pub_date = story.find("pubDate")
-        if pub_date and datetime.strptime(pub_date.text, "%a, %d %b %Y %H:%M:%S %Z").date() == current_date.date():
-            google_news_stories_today.append({
-                'title': story.title.text,
-                'date': pub_date.text,
-                'description': story.description.text,
-                'link': story.link.text
-            })
+        if pub_date:
+            pub_date = datetime.strptime(pub_date.text, "%a, %d %b %Y %H:%M:%S %Z")
+            if pub_date.date() == current_date.date():
+                title = story.find("title").text
+                link = story.find("link").text
+                actual_link = fetch_actual_article_url(link)
+                if actual_link:
+                    google_news_stories_today.append({
+                        "title": title,
+                        "link": link,
+                        "actual_link": actual_link
+                    })
 
     # Send the request to Google News for yesterday's news
     google_news_response_yesterday = requests.get(google_news_url_yesterday)
@@ -132,48 +155,33 @@ def scrape_google_news(keywords):
     google_news_stories_yesterday = []
     for story in google_news_data_yesterday.find_all("item"):
         pub_date = story.find("pubDate")
-        if pub_date and datetime.strptime(pub_date.text, "%a, %d %b %Y %H:%M:%S %Z").date() == yesterday_date.date():
-            google_news_stories_yesterday.append({
-                'title': story.title.text,
-                'date': pub_date.text,
-                'description': story.description.text,
-                'link': story.link.text
-            })
+        if pub_date:
+            pub_date = datetime.strptime(pub_date.text, "%a, %d %b %Y %H:%M:%S %Z")
+            if pub_date.date() == yesterday_date.date():
+                title = story.find("title").text
+                link = story.find("link").text
+                actual_link = fetch_actual_article_url(link)
+                if actual_link:
+                    google_news_stories_yesterday.append({
+                        "title": title,
+                        "link": link,
+                        "actual_link": actual_link
+                    })
 
     # Combine today's and yesterday's stories
-    all_stories = google_news_stories_today + google_news_stories_yesterday
+    google_news_stories = google_news_stories_today + google_news_stories_yesterday
 
-    # Extract the top 8 stories
-    top_stories = all_stories[:8]
+    return google_news_stories
 
-    return top_stories
-
-# Scrape button
-if st.button("Scrape Google News"):
-    stories = scrape_google_news(keywords)
-    st.session_state.stories = stories  # Store stories in session state
-    if stories:
-        st.success("Scraped Google News successfully!")
-    else:
-        st.error("No stories found. Please try different keywords.")
-
-# Display scraped stories in a dropdown menu
-if "stories" in st.session_state:
-    story_options = {f"{story['title']} - {story['link']}": story['link'] for story in st.session_state.stories}
-    selected_story = st.selectbox("Select a story", options=list(story_options.keys()))
-
-    # Button to use the selected story
-    if st.button("Use Selected Story"):
-        research_url = story_options[selected_story]
-        st.session_state.research_url = research_url
-        st.success(f"Selected story: {selected_story}")
-
-# Function to fetch research content
+# Function to fetch content from URL
 def fetch_content_from_url(url):
     try:
         response = requests.get(url)
+        response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
-        return soup.get_text()
+        paragraphs = soup.find_all('p')
+        content = "\n".join([para.get_text() for para in paragraphs])
+        return content
     except requests.RequestException as e:
         st.error(f"Failed to fetch research content: {e}")
         return ""
@@ -210,6 +218,7 @@ def generate_podcast_script(name, description, hosts, facts):
 
     return response.choices[0].message.content.strip()
 
+# Function to save the script in the database
 def save_script_in_db(podcast_name, description, hosts, script_content, research_url, audio_file_path):
     # Create and save podcast
     new_podcast = Podcast(
@@ -308,13 +317,37 @@ if st.button("Import Script"):
     else:
         st.error("Failed to import script.")
 
+# Scrape button
+if st.button("Scrape Google News"):
+    stories = scrape_google_news(keywords)
+    st.session_state.stories = stories  # Store stories in session state
+    if stories:
+        st.success("Scraped Google News successfully!")
+    else:
+        st.error("No stories found. Please try different keywords.")
+
+# Display scraped stories in a dropdown menu
+if "stories" in st.session_state:
+    story_options = {f"{story['title']} - {story['actual_link']}": story['actual_link'] for story in st.session_state.stories}
+    selected_story = st.selectbox("Select a story", options=list(story_options.keys()))
+
+    # Button to use the selected story
+    if st.button("Use Selected Story"):
+        actual_article_url = story_options[selected_story]
+        st.session_state.research_url = actual_article_url  # Store the actual article URL in session state
+        st.success(f"Selected story: {selected_story}")
+        st.write(f"Research URL: {actual_article_url}")
+
+# Input for research URL
+st.write("Please copy and paste the actual article URL into the field below if it was not fetched automatically.")
+research_url = st.text_input("Research URL", value=st.session_state.get("research_url", ""))
+
 # Button to generate podcast script
 if st.button("Generate Podcast Script", key="generate_script"):
     if name and description:
-        research_url = st.session_state.get("research_url", "")
         if research_url:
+            st.write(f"Using research URL: {research_url}")  # Log the research URL
             research_content = fetch_content_from_url(research_url)
-            st.write(f"Fetched content: {research_content[:500]}...")  # Log the fetched content
             if research_content:
                 facts = extract_facts_from_content(research_content)
                 st.session_state.facts = facts  # Store facts in session state
@@ -322,11 +355,11 @@ if st.button("Generate Podcast Script", key="generate_script"):
                 st.session_state.script_content = script_content  # Store script content in session state
 
                 # Display the generated script in an editable text area
-                st.session_state.script_content = st.text_area("Generated Script", value=script_content, height=300)
+                st.text_area("Generated Script", value=script_content, height=300, key="generated_script")
 
                 # Display the extracted facts in the sidebar
                 st.sidebar.header("Extracted Facts")
-                st.sidebar.text_area("Facts", value=facts, height=300)
+                st.sidebar.text_area("Facts", value=facts, height=300, key="extracted_facts")
 
                 # Generate audio
                 voices = {
@@ -348,9 +381,9 @@ if st.button("Generate Podcast Script", key="generate_script"):
 
 # Button to generate audio from the script
 if "script_content" in st.session_state:
-    st.text_area("Generated Script", value=st.session_state.script_content, height=300)
+    st.text_area("Generated Script", value=st.session_state.script_content, height=300, key="generated_script_display")
     if "facts" in st.session_state:
-        st.sidebar.text_area("Facts", value=st.session_state.facts, height=300)
+        st.sidebar.text_area("Facts", value=st.session_state.facts, height=300, key="extracted_facts_display")
     if st.button("Generate Audio"):
         script_content = st.session_state.script_content  # Retrieve script content from session state
         voices = {
@@ -363,10 +396,14 @@ if "script_content" in st.session_state:
             st.audio(audio_file_path, format="audio/mp3")
             with open(audio_file_path, "rb") as file:
                 st.download_button(label="Download Audio", data=file, file_name="podcast_audio.mp3")
+        else:
+            st.warning("No audio data available for the generated script.")
 
 # Display imported audio if available
-if "audio_data" in st.session_state and st.session_state.audio_data is not None:
-    st.audio(io.BytesIO(st.session_state.audio_data), format="audio/mp3")
-    st.download_button(label="Download Imported Audio", data=st.session_state.audio_data, file_name="imported_podcast_audio.mp3")
-else:
-    st.warning("No audio data available for the imported script.")
+if "audio_data" in st.session_state:
+    if st.session_state.audio_data is not None:
+        st.audio(io.BytesIO(st.session_state.audio_data), format="audio/mp3")
+        st.download_button(label="Download Imported Audio", data=st.session_state.audio_data, file_name="imported_podcast_audio.mp3")
+    else:
+        if st.button("Play Imported Audio"):
+            st.warning("No audio data available for the imported script.")
