@@ -5,7 +5,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import logging  # Import the logging module
-from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, LargeBinary
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 from datetime import datetime
 from pydub import AudioSegment
@@ -53,6 +53,7 @@ class Script(Base):
     podcast_id = Column(Integer, ForeignKey('podcast.id'), nullable=False)
     content = Column(Text, nullable=False)
     research_url = Column(String(255))
+    audio = Column(LargeBinary)  # Add this line to store audio as BLOB
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 # Create the tables if they don't exist
@@ -88,6 +89,43 @@ host2_voice = st.selectbox("Voice for Host 2", options=list(available_voices.key
 host3 = st.text_input("Host 3", value="Khaya Dlanga")
 host3_voice = st.selectbox("Voice for Host 3", options=list(available_voices.keys()))
 research_url = st.text_input("Research URL", value="")
+
+# Input for Google News keywords
+keywords = st.text_input("Google News Keywords", value="technology")
+
+# Function to scrape Google News
+def scrape_google_news(keywords):
+    query = "+".join(keywords.split())
+    url = f"https://news.google.com/search?q={query}"
+    response = requests.get(url)
+    soup = BeautifulSoup(response.content, 'html.parser')
+    articles = soup.find_all('article')
+    stories = []
+    for article in articles:
+        headline = article.find('h3')
+        if headline:
+            link = headline.find('a')['href']
+            if link.startswith('./'):
+                link = 'https://news.google.com' + link[1:]
+            stories.append((headline.text, link))
+    return stories
+
+# Scrape button
+if st.button("Scrape Google News"):
+    stories = scrape_google_news(keywords)
+    st.session_state.stories = stories  # Store stories in session state
+    st.success("Scraped Google News successfully!")
+
+# Display scraped stories in a dropdown menu
+if "stories" in st.session_state:
+    story_options = {title: link for title, link in st.session_state.stories}
+    selected_story = st.selectbox("Select a story", options=list(story_options.keys()))
+
+    # Button to use the selected story
+    if st.button("Use Selected Story"):
+        research_url = story_options[selected_story]
+        st.session_state.research_url = research_url
+        st.success(f"Selected story: {selected_story}")
 
 # Function to fetch research content
 def fetch_content_from_url(url):
@@ -130,7 +168,7 @@ def generate_podcast_script(name, description, hosts, facts):
 
     return response.choices[0].message.content.strip()
 
-def save_script_in_db(podcast_name, description, hosts, script_content, research_url):
+def save_script_in_db(podcast_name, description, hosts, script_content, research_url, audio_file_path):
     # Create and save podcast
     new_podcast = Podcast(
         name=podcast_name,
@@ -143,11 +181,16 @@ def save_script_in_db(podcast_name, description, hosts, script_content, research
     session.add(new_podcast)
     session.commit()
 
+    # Read audio file as binary
+    with open(audio_file_path, "rb") as file:
+        audio_data = file.read()
+
     # Create and save script
     new_script = Script(
         podcast_id=new_podcast.id,
         content=script_content,
-        research_url=research_url
+        research_url=research_url,
+        audio=audio_data  # Save audio data
     )
     session.add(new_script)
     session.commit()
@@ -217,6 +260,7 @@ if st.button("Import Script"):
     selected_script = session.get(Script, script_options[selected_script_id])
     if selected_script:
         st.session_state.script_content = selected_script.content
+        st.session_state.audio_data = selected_script.audio  # Store audio data in session state
         st.success("Script imported successfully!")
         st.write(selected_script.content)
     else:
@@ -228,6 +272,7 @@ if st.button("Generate Podcast Script", key="generate_script"):
         research_content = fetch_content_from_url(research_url)
         if research_content:
             facts = extract_facts_from_content(research_content)
+            st.session_state.facts = facts  # Store facts in session state
             script_content = generate_podcast_script(name, description, [host1, host2, host3], facts)
             st.session_state.script_content = script_content  # Store script content in session state
 
@@ -238,9 +283,17 @@ if st.button("Generate Podcast Script", key="generate_script"):
             st.sidebar.header("Extracted Facts")
             st.sidebar.text_area("Facts", value=facts, height=300)
 
-            # Save the script in the database
-            saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url)
-            st.success("Podcast script generated and saved successfully!")
+            # Generate audio
+            voices = {
+                host1: available_voices[host1_voice],
+                host2: available_voices[host2_voice],
+                host3: available_voices[host3_voice]
+            }
+            audio_file_path = generate_audio(script_content, voices)
+            if audio_file_path:
+                # Save the script and audio in the database
+                saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url, audio_file_path)
+                st.success("Podcast script and audio generated and saved successfully!")
         else:
             st.error("Failed to fetch or generate content.")
     else:
@@ -249,7 +302,8 @@ if st.button("Generate Podcast Script", key="generate_script"):
 # Button to generate audio from the script
 if "script_content" in st.session_state:
     st.text_area("Generated Script", value=st.session_state.script_content, height=300)
-    st.sidebar.text_area("Facts", value=facts, height=300)
+    if "facts" in st.session_state:
+        st.sidebar.text_area("Facts", value=st.session_state.facts, height=300)
     if st.button("Generate Audio"):
         script_content = st.session_state.script_content  # Retrieve script content from session state
         voices = {
@@ -262,3 +316,10 @@ if "script_content" in st.session_state:
             st.audio(audio_file_path, format="audio/mp3")
             with open(audio_file_path, "rb") as file:
                 st.download_button(label="Download Audio", data=file, file_name="podcast_audio.mp3")
+
+# Display imported audio if available
+if "audio_data" in st.session_state and st.session_state.audio_data is not None:
+    st.audio(io.BytesIO(st.session_state.audio_data), format="audio/mp3")
+    st.download_button(label="Download Imported Audio", data=st.session_state.audio_data, file_name="imported_podcast_audio.mp3")
+else:
+    st.warning("No audio data available for the imported script.")
