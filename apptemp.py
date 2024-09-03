@@ -1,8 +1,7 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from openai import OpenAI
-
+import openai  # Correct import statement
 from dotenv import load_dotenv
 import os
 import logging  # Import the logging module
@@ -16,21 +15,15 @@ import tempfile
 # Load environment variables from .env file
 load_dotenv()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 # Get the API keys from the environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVEN_LABS_API_KEY = os.getenv("ELEVEN_LABS_API_KEY")
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not found in environment variables")
 
 if not ELEVEN_LABS_API_KEY:
     raise ValueError("ELEVEN_LABS_API_KEY not found in environment variables")
-
-if not NEWS_API_KEY:
-    raise ValueError("NEWS_API_KEY not found in environment variables")
 
 # Print the loaded API key for verification
 print(f"Loaded OpenAI API Key: {OPENAI_API_KEY[:5]}...")
@@ -107,7 +100,8 @@ def fetch_actual_article_url(news_url):
 
 # Function to scrape news using NewsAPI
 def scrape_news(keywords):
-    url = f"https://newsapi.org/v2/everything?q={keywords}&apiKey={NEWS_API_KEY}"
+    api_key = "a5e5898731c74bfe97bae546ef04dea6"
+    url = f"https://newsapi.org/v2/everything?q={keywords}&apiKey={api_key}"
     response = requests.get(url)
     if response.status_code == 200:
         articles = response.json().get('articles', [])
@@ -180,11 +174,13 @@ def fetch_content_from_url(url):
 # Function to extract 20 facts from content using OpenAI
 def extract_facts_from_content(content):
     prompt = f"Extract 20 interesting facts from the following content:\n\n{content}"
-    response = client.chat.completions.create(model="gpt-4",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": prompt}
-    ])
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    )
     return response.choices[0].message.content.strip()
 
 # Function to generate podcast script using OpenAI
@@ -196,11 +192,13 @@ def generate_podcast_script(name, description, hosts, personalities, facts):
     {facts}
     """
 
-    response = client.chat.completions.create(model="gpt-4",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": prompt}
-    ])
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt}
+        ]
+    )
 
     return response.choices[0].message.content.strip()
 
