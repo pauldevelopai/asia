@@ -82,14 +82,12 @@ def fetch_content_from_url(url):
 
 # Function to generate podcast script using OpenAI
 def generate_podcast_script(name, description, hosts, research_content):
-    prompt = f"""Generate a podcast script for the podcast titled '{name}' 
-    hosted by {hosts[0]}, {hosts[1]}, and {hosts[2]}. 
-    The podcast description is: {description}.
+    current_date = datetime.now()
+    prompt = f"""Create a podcast script for the show called "{name}". The show is about {description}. Do not put emotions of speakers in brackets. Be sure to mention "{current_date.strftime('%B %d, %Y')}" but in a casual way. Always have the person's name before someone speaks. {hosts[0]} will introduce co-host {hosts[1]} and the main topic they want to talk about. {hosts[0]} is occasionally excited but is generally positive about the world and {hosts[1]} will be logical, but can be negative. At the very start {hosts[0]} and {hosts[1]} chat together in a friendly way and relate the day's stories to their own lives. They won't ask each other directly how the other one is feeling. In every script they have a different emotion and personal anecdote and a different reason for feeling that. They do not talk about the weather. They are joined by {hosts[2]} who will introduce himself and explain that he will make a prediction of what will happen next in each story over the following week, his prediction is usually negative as he believes we should burn the world down and start again. {hosts[0]}, {hosts[1]}, and {hosts[2]} need to all speak like they have known each other for years. Discuss the following. This is just the first segment, end the segment promising more in the next segment.
 
     Research Content:
     {research_content}
-
-    Please generate a detailed script based on the above information."""
+    """
 
     response = client.chat.completions.create(model="gpt-4",
     messages=[
