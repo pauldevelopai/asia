@@ -73,25 +73,6 @@ def fetch_available_voices():
         st.error(f"Failed to fetch voices: {response.status_code} - {response.text}")
         return {}
 
-# Fetch available voices
-available_voices = fetch_available_voices()
-
-# Streamlit UI
-st.title("Burn It Down Podcast Generator")
-
-# Input for podcast information
-name = st.text_input("Podcast Name", value="Burn It Down")
-description = st.text_area("Podcast Description", value="about how technology and AI is changing our world, for good and bad.")
-host1 = st.text_input("Host 1", value="Amina Ahmed")
-host1_voice = st.selectbox("Voice for Host 1", options=list(available_voices.keys()))
-host2 = st.text_input("Host 2", value="Will Adams")
-host2_voice = st.selectbox("Voice for Host 2", options=list(available_voices.keys()))
-host3 = st.text_input("Host 3", value="Khaya Dlanga")
-host3_voice = st.selectbox("Voice for Host 3", options=list(available_voices.keys()))
-
-# Input for news keywords
-keywords = st.text_input("News Keywords", value="tech and media and AI")
-
 # Function to fetch the actual article URL from a news link
 def fetch_actual_article_url(news_url):
     try:
@@ -131,6 +112,34 @@ def scrape_news(keywords):
         st.error(f"Failed to fetch news: {response.status_code} - {response.text}")
         return []
 
+# Fetch available voices
+available_voices = fetch_available_voices()
+
+# Streamlit UI
+st.title("Burn It Down Podcast Generator")
+
+# Input for podcast information
+name = st.text_input("Podcast Name", value="Burn It Down")
+description = st.text_area("Podcast Description", value="about how technology and AI is changing our world, for good and bad.")
+host1 = st.text_input("Host 1", value="Amina Ahmed")
+host1_voice = st.selectbox("Voice for Host 1", options=list(available_voices.keys()))
+host2 = st.text_input("Host 2", value="Will Adams")
+host2_voice = st.selectbox("Voice for Host 2", options=list(available_voices.keys()))
+host3 = st.text_input("Host 3", value="Khaya Dlanga")
+host3_voice = st.selectbox("Voice for Host 3", options=list(available_voices.keys()))
+
+# Input for news keywords
+keywords = st.text_input("News Keywords", value="tech and media and AI")
+
+# Scrape button
+if st.button("Scrape News"):
+    stories = scrape_news(keywords)
+    st.session_state.stories = stories  # Store stories in session state
+    if stories:
+        st.success("Scraped news successfully!")
+    else:
+        st.error("No stories found. Please try different keywords.")
+
 # Function to fetch content from URL
 def fetch_content_from_url(url):
     try:
@@ -153,7 +162,6 @@ def extract_facts_from_content(content):
             {"role": "user", "content": prompt}
         ]
     )
-
     return response.choices[0].message.content.strip()
 
 # Function to generate podcast script using OpenAI
@@ -276,15 +284,6 @@ if st.button("Import Script"):
     else:
         st.error("Failed to import script.")
 
-# Scrape button
-if st.button("Scrape News"):
-    stories = scrape_news(keywords)
-    st.session_state.stories = stories  # Store stories in session state
-    if stories:
-        st.success("Scraped news successfully!")
-    else:
-        st.error("No stories found. Please try different keywords.")
-
 # Display scraped stories in a dropdown menu
 if "stories" in st.session_state:
     story_options = {f"{story['title']} - {story['actual_link']}": story['actual_link'] for story in st.session_state.stories}
@@ -310,31 +309,37 @@ if st.button("Generate Podcast Script", key="generate_script"):
             if research_content:
                 facts = extract_facts_from_content(research_content)
                 st.session_state.facts = facts  # Store facts in session state
-                script_content = generate_podcast_script(name, description, [host1, host2, host3], facts)
-                st.session_state.script_content = script_content  # Store script content in session state
 
-                # Display the generated script in an editable text area
-                st.text_area("Generated Script", value=script_content, height=300, key="generated_script")
+                # Ensure all 20 facts are used
+                facts_list = facts.split('\n')
+                if len(facts_list) == 20:
+                    script_content = generate_podcast_script(name, description, [host1, host2, host3], facts)
+                    st.session_state.script_content = script_content  # Store script content in session state
 
-                # Display the extracted facts in the sidebar
-                st.sidebar.header("Extracted Facts")
-                st.sidebar.text_area("Facts", value=facts, height=300, key="extracted_facts")
+                    # Display the generated script in an editable text area
+                    st.text_area("Generated Script", value=script_content, height=300, key="generated_script")
 
-                # Generate audio
-                voices = {
-                    host1: available_voices[host1_voice],
-                    host2: available_voices[host2_voice],
-                    host3: available_voices[host3_voice]
-                }
-                audio_file_path = generate_audio(script_content, voices)
-                if audio_file_path:
-                    # Save the script and audio in the database
-                    saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url, audio_file_path)
-                    st.success("Podcast script and audio generated and saved successfully!")
+                    # Display the extracted facts in the sidebar
+                    st.sidebar.header("Extracted Facts")
+                    st.sidebar.text_area("Facts", value=facts, height=300, key="extracted_facts")
+
+                    # Generate audio
+                    voices = {
+                        host1: available_voices[host1_voice],
+                        host2: available_voices[host2_voice],
+                        host3: available_voices[host3_voice]
+                    }
+                    audio_file_path = generate_audio(script_content, voices)
+                    if audio_file_path:
+                        # Save the script and audio in the database
+                        saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url, audio_file_path)
+                        st.success("Podcast script and audio generated and saved successfully!")
+                    else:
+                        # Save the script in the database without audio
+                        saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url)
+                        st.success("Podcast script generated and saved successfully!")
                 else:
-                    # Save the script in the database without audio
-                    saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url)
-                    st.success("Podcast script generated and saved successfully!")
+                    st.error("Failed to extract 20 facts. Please try again.")
             else:
                 st.error("Failed to fetch or generate content.")
         else:
