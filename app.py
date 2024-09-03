@@ -108,35 +108,28 @@ def fetch_actual_article_url(news_url):
         logging.error(f"Failed to fetch actual article URL: {e}")
         return None
 
-# Function to scrape news from multiple sources
+# Function to scrape news using NewsAPI
 def scrape_news(keywords):
-    sources = [
-        f"https://feeds.bbci.co.uk/news/rss.xml",
-        f"http://rss.cnn.com/rss/edition.rss",
-        f"https://www.reuters.com/rssFeed/topNews"
-    ]
-    stories = []
-    for source in sources:
-        response = requests.get(source)
-        soup = BeautifulSoup(response.content, 'xml')
-        items = soup.find_all('item')
-        for item in items:
-            title_tag = item.find('title')
-            link_tag = item.find('link')
-            pub_date_tag = item.find('pubDate')
-            if title_tag and link_tag and pub_date_tag:
-                title = title_tag.text
-                link = link_tag.text
-                pub_date = pub_date_tag.text
-                if keywords.lower() in title.lower():
-                    actual_url = fetch_actual_article_url(link)
-                    if actual_url:
-                        stories.append({
-                            'title': title,
-                            'actual_link': actual_url,
-                            'pub_date': pub_date
-                        })
-    return stories
+    api_key = "a5e5898731c74bfe97bae546ef04dea6"
+    url = f"https://newsapi.org/v2/everything?q={keywords}&apiKey={api_key}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        articles = response.json().get('articles', [])
+        stories = []
+        for article in articles:
+            title = article.get('title')
+            link = article.get('url')
+            pub_date = article.get('publishedAt')
+            if title and link and pub_date:
+                stories.append({
+                    'title': title,
+                    'actual_link': link,
+                    'pub_date': pub_date
+                })
+        return stories
+    else:
+        st.error(f"Failed to fetch news: {response.status_code} - {response.text}")
+        return []
 
 # Function to fetch content from URL
 def fetch_content_from_url(url):
