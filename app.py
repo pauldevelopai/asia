@@ -12,6 +12,9 @@ from pydub import AudioSegment
 import io
 import tempfile
 
+# Add the logo with specified width
+st.image("logo.jpeg", width=150)  # Adjust the width as needed
+
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 
