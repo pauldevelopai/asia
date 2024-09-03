@@ -204,10 +204,12 @@ if st.button("Generate Podcast Script", key="generate_script"):
             script_content = generate_podcast_script(name, description, [host1, host2, host3], research_content)
             st.session_state.script_content = script_content  # Store script content in session state
 
+            # Display the generated script in an editable text area
+            st.session_state.script_content = st.text_area("Generated Script", value=script_content, height=300)
+
             # Save the script in the database
             saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url)
             st.success("Podcast script generated and saved successfully!")
-            st.write(script_content)
         else:
             st.error("Failed to fetch or generate content.")
     else:
