@@ -109,7 +109,7 @@ def scrape_google_news(keywords):
     google_news_response_today = requests.get(google_news_url_today)
 
     # Parse the response from Google News
-    google_news_data_today = BeautifulSoup(google_news_response_today.text, "lxml")
+    google_news_data_today = BeautifulSoup(google_news_response_today.text, features="xml")
 
     # Extract the stories from Google News that were published today
     google_news_stories_today = []
@@ -127,7 +127,7 @@ def scrape_google_news(keywords):
     google_news_response_yesterday = requests.get(google_news_url_yesterday)
 
     # Parse the response from Google News
-    google_news_data_yesterday = BeautifulSoup(google_news_response_yesterday.text, "lxml")
+    google_news_data_yesterday = BeautifulSoup(google_news_response_yesterday.text, features="xml")
 
     # Extract the stories from Google News that were published yesterday
     google_news_stories_yesterday = []
