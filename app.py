@@ -89,19 +89,17 @@ host2_voice = st.selectbox("Voice for Host 2", options=list(available_voices.key
 host3 = st.text_input("Host 3", value="Khaya Dlanga")
 host3_voice = st.selectbox("Voice for Host 3", options=list(available_voices.keys()))
 
-# Input for Google News keywords
-keywords = st.text_input("Google News Keywords", value="tech and media and AI")
+# Input for news keywords
+keywords = st.text_input("News Keywords", value="tech and media and AI")
 
-# Function to fetch the actual article URL from a Google News link
-def fetch_actual_article_url(google_news_url):
+# Function to fetch the actual article URL from a news link
+def fetch_actual_article_url(news_url):
     try:
-        response = requests.get(google_news_url)
+        response = requests.get(news_url)
         soup = BeautifulSoup(response.content, 'html.parser')
-        link_tag = soup.find('a', {'class': 'VDXfz'})
+        link_tag = soup.find('a', href=True)
         if link_tag:
             actual_url = link_tag['href']
-            if actual_url.startswith('/url?'):
-                actual_url = actual_url.split('&')[0].replace('/url?q=', '')
             return actual_url
         else:
             logging.error("Failed to find the actual article link.")
@@ -110,74 +108,40 @@ def fetch_actual_article_url(google_news_url):
         logging.error(f"Failed to fetch actual article URL: {e}")
         return None
 
-# Function to scrape Google News
-def scrape_google_news(keywords):
-    query = "+".join(keywords.split())
-    google_news_url_today = f"https://news.google.com/rss/search?q={query}%20when:1d&hl=en-US&gl=US&ceid=US:en"
-    google_news_url_yesterday = f"https://news.google.com/rss/search?q={query}%20when:2d-1d&hl=en-US&gl=US&ceid=US:en"
-
-    # Get the current date and time
-    current_date = datetime.utcnow()
-
-    # Subtract one day from the current date to get yesterday's date
-    yesterday_date = current_date - timedelta(days=1)
-
-    # Send the request to Google News for today's news
-    google_news_response_today = requests.get(google_news_url_today)
-
-    # Parse the response from Google News
-    google_news_data_today = BeautifulSoup(google_news_response_today.text, features="xml")
-
-    # Extract the stories from Google News that were published today
-    google_news_stories_today = []
-    for story in google_news_data_today.find_all("item"):
-        pub_date = story.find("pubDate")
-        if pub_date:
-            pub_date = datetime.strptime(pub_date.text, "%a, %d %b %Y %H:%M:%S %Z")
-            if pub_date.date() == current_date.date():
-                title = story.find("title").text
-                link = story.find("link").text
-                actual_link = fetch_actual_article_url(link)
-                if actual_link:
-                    google_news_stories_today.append({
-                        "title": title,
-                        "link": link,
-                        "actual_link": actual_link
-                    })
-
-    # Send the request to Google News for yesterday's news
-    google_news_response_yesterday = requests.get(google_news_url_yesterday)
-
-    # Parse the response from Google News
-    google_news_data_yesterday = BeautifulSoup(google_news_response_yesterday.text, features="xml")
-
-    # Extract the stories from Google News that were published yesterday
-    google_news_stories_yesterday = []
-    for story in google_news_data_yesterday.find_all("item"):
-        pub_date = story.find("pubDate")
-        if pub_date:
-            pub_date = datetime.strptime(pub_date.text, "%a, %d %b %Y %H:%M:%S %Z")
-            if pub_date.date() == yesterday_date.date():
-                title = story.find("title").text
-                link = story.find("link").text
-                actual_link = fetch_actual_article_url(link)
-                if actual_link:
-                    google_news_stories_yesterday.append({
-                        "title": title,
-                        "link": link,
-                        "actual_link": actual_link
-                    })
-
-    # Combine today's and yesterday's stories
-    google_news_stories = google_news_stories_today + google_news_stories_yesterday
-
-    return google_news_stories
+# Function to scrape news from multiple sources
+def scrape_news(keywords):
+    sources = [
+        f"https://feeds.bbci.co.uk/news/rss.xml",
+        f"http://rss.cnn.com/rss/edition.rss",
+        f"https://www.reuters.com/rssFeed/topNews"
+    ]
+    stories = []
+    for source in sources:
+        response = requests.get(source)
+        soup = BeautifulSoup(response.content, 'xml')
+        items = soup.find_all('item')
+        for item in items:
+            title_tag = item.find('title')
+            link_tag = item.find('link')
+            pub_date_tag = item.find('pubDate')
+            if title_tag and link_tag and pub_date_tag:
+                title = title_tag.text
+                link = link_tag.text
+                pub_date = pub_date_tag.text
+                if keywords.lower() in title.lower():
+                    actual_url = fetch_actual_article_url(link)
+                    if actual_url:
+                        stories.append({
+                            'title': title,
+                            'actual_link': actual_url,
+                            'pub_date': pub_date
+                        })
+    return stories
 
 # Function to fetch content from URL
 def fetch_content_from_url(url):
     try:
         response = requests.get(url)
-        response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
         paragraphs = soup.find_all('p')
         content = "\n".join([para.get_text() for para in paragraphs])
@@ -219,7 +183,7 @@ def generate_podcast_script(name, description, hosts, facts):
     return response.choices[0].message.content.strip()
 
 # Function to save the script in the database
-def save_script_in_db(podcast_name, description, hosts, script_content, research_url, audio_file_path):
+def save_script_in_db(podcast_name, description, hosts, script_content, research_url, audio_file_path=None):
     # Create and save podcast
     new_podcast = Podcast(
         name=podcast_name,
@@ -232,16 +196,18 @@ def save_script_in_db(podcast_name, description, hosts, script_content, research
     session.add(new_podcast)
     session.commit()
 
-    # Read audio file as binary
-    with open(audio_file_path, "rb") as file:
-        audio_data = file.read()
+    # Read audio file as binary if available
+    audio_data = None
+    if audio_file_path:
+        with open(audio_file_path, "rb") as file:
+            audio_data = file.read()
 
     # Create and save script
     new_script = Script(
         podcast_id=new_podcast.id,
         content=script_content,
         research_url=research_url,
-        audio=audio_data  # Save audio data
+        audio=audio_data  # Save audio data if available
     )
     session.add(new_script)
     session.commit()
@@ -318,11 +284,11 @@ if st.button("Import Script"):
         st.error("Failed to import script.")
 
 # Scrape button
-if st.button("Scrape Google News"):
-    stories = scrape_google_news(keywords)
+if st.button("Scrape News"):
+    stories = scrape_news(keywords)
     st.session_state.stories = stories  # Store stories in session state
     if stories:
-        st.success("Scraped Google News successfully!")
+        st.success("Scraped news successfully!")
     else:
         st.error("No stories found. Please try different keywords.")
 
@@ -372,6 +338,10 @@ if st.button("Generate Podcast Script", key="generate_script"):
                     # Save the script and audio in the database
                     saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url, audio_file_path)
                     st.success("Podcast script and audio generated and saved successfully!")
+                else:
+                    # Save the script in the database without audio
+                    saved_script = save_script_in_db(name, description, [host1, host2, host3], script_content, research_url)
+                    st.success("Podcast script generated and saved successfully!")
             else:
                 st.error("Failed to fetch or generate content.")
         else:
