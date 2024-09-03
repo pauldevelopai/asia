@@ -7,7 +7,7 @@ import os
 import logging  # Import the logging module
 from sqlalchemy import create_engine, Column, Integer, String, Text, ForeignKey, DateTime, LargeBinary
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
-from datetime import datetime
+from datetime import datetime, timedelta
 from pydub import AudioSegment
 import io
 import tempfile
@@ -91,34 +91,76 @@ host3_voice = st.selectbox("Voice for Host 3", options=list(available_voices.key
 research_url = st.text_input("Research URL", value="")
 
 # Input for Google News keywords
-keywords = st.text_input("Google News Keywords", value="technology")
+keywords = st.text_input("Google News Keywords", value="tech and media and AI")
 
 # Function to scrape Google News
 def scrape_google_news(keywords):
     query = "+".join(keywords.split())
-    url = f"https://news.google.com/search?q={query}"
-    response = requests.get(url)
-    soup = BeautifulSoup(response.content, 'html.parser')
-    articles = soup.find_all('article')
-    stories = []
-    for article in articles:
-        headline = article.find('h3')
-        if headline:
-            link = headline.find('a')['href']
-            if link.startswith('./'):
-                link = 'https://news.google.com' + link[1:]
-            stories.append((headline.text, link))
-    return stories
+    google_news_url_today = f"https://news.google.com/rss/search?q={query}%20when:1d&hl=en-US&gl=US&ceid=US:en"
+    google_news_url_yesterday = f"https://news.google.com/rss/search?q={query}%20when:2d-1d&hl=en-US&gl=US&ceid=US:en"
+
+    # Get the current date and time
+    current_date = datetime.utcnow()
+
+    # Subtract one day from the current date to get yesterday's date
+    yesterday_date = current_date - timedelta(days=1)
+
+    # Send the request to Google News for today's news
+    google_news_response_today = requests.get(google_news_url_today)
+
+    # Parse the response from Google News
+    google_news_data_today = BeautifulSoup(google_news_response_today.text, "lxml")
+
+    # Extract the stories from Google News that were published today
+    google_news_stories_today = []
+    for story in google_news_data_today.find_all("item"):
+        pub_date = story.find("pubDate")
+        if pub_date and datetime.strptime(pub_date.text, "%a, %d %b %Y %H:%M:%S %Z").date() == current_date.date():
+            google_news_stories_today.append({
+                'title': story.title.text,
+                'date': pub_date.text,
+                'description': story.description.text,
+                'link': story.link.text
+            })
+
+    # Send the request to Google News for yesterday's news
+    google_news_response_yesterday = requests.get(google_news_url_yesterday)
+
+    # Parse the response from Google News
+    google_news_data_yesterday = BeautifulSoup(google_news_response_yesterday.text, "lxml")
+
+    # Extract the stories from Google News that were published yesterday
+    google_news_stories_yesterday = []
+    for story in google_news_data_yesterday.find_all("item"):
+        pub_date = story.find("pubDate")
+        if pub_date and datetime.strptime(pub_date.text, "%a, %d %b %Y %H:%M:%S %Z").date() == yesterday_date.date():
+            google_news_stories_yesterday.append({
+                'title': story.title.text,
+                'date': pub_date.text,
+                'description': story.description.text,
+                'link': story.link.text
+            })
+
+    # Combine today's and yesterday's stories
+    all_stories = google_news_stories_today + google_news_stories_yesterday
+
+    # Extract the top 8 stories
+    top_stories = all_stories[:8]
+
+    return top_stories
 
 # Scrape button
 if st.button("Scrape Google News"):
     stories = scrape_google_news(keywords)
     st.session_state.stories = stories  # Store stories in session state
-    st.success("Scraped Google News successfully!")
+    if stories:
+        st.success("Scraped Google News successfully!")
+    else:
+        st.error("No stories found. Please try different keywords.")
 
 # Display scraped stories in a dropdown menu
 if "stories" in st.session_state:
-    story_options = {title: link for title, link in st.session_state.stories}
+    story_options = {story['title']: story['link'] for story in st.session_state.stories}
     selected_story = st.selectbox("Select a story", options=list(story_options.keys()))
 
     # Button to use the selected story
@@ -147,6 +189,7 @@ def extract_facts_from_content(content):
             {"role": "user", "content": prompt}
         ]
     )
+
     return response.choices[0].message.content.strip()
 
 # Function to generate podcast script using OpenAI
