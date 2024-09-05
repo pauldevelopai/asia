@@ -1,5 +1,6 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
+from datetime import datetime
 
 DATABASE_URI = "sqlite:///podcasts.db"  # Database location
 engine = create_engine(DATABASE_URI)
@@ -37,11 +38,12 @@ class Podcast(Base):
 class Script(Base):
     __tablename__ = 'scripts'
     id = Column(Integer, primary_key=True)
-    content = Column(String)
-    audio = Column(String)
-    research_url = Column(String)  # Add this line
     show_id = Column(Integer, ForeignKey('show_profiles.id'))
-    podcast_id = Column(Integer, ForeignKey('podcasts.id'))  # Add this line
+    podcast_id = Column(Integer, ForeignKey('podcasts.id'))
+    content = Column(String)
+    research_url = Column(String)
+    audio = Column(String)  # Assuming audio is stored as a string path or binary data
+    created_at = Column(DateTime, default=datetime.utcnow)  # Ensure this line exists
     show = relationship("ShowProfile", back_populates="scripts")
     podcast = relationship("Podcast", back_populates="scripts")
 

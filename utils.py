@@ -80,7 +80,7 @@ def generate_podcast_script(name, description, hosts, personalities, facts, clie
 
     return response.choices[0].message.content.strip()
 
-def save_script_in_db(podcast_name, description, hosts, script_content, research_url, audio_file_path=None):
+def save_script_in_db(show_id, podcast_name, description, hosts, script_content, research_url, audio_file_path=None):
     # Create and save podcast
     new_podcast = Podcast(
         name=podcast_name,
@@ -101,6 +101,7 @@ def save_script_in_db(podcast_name, description, hosts, script_content, research
 
     # Create and save script
     new_script = Script(
+        show_id=show_id,  # Ensure this line is correct
         podcast_id=new_podcast.id,
         content=script_content,
         research_url=research_url,
