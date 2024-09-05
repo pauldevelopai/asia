@@ -191,6 +191,7 @@ if st.button("Generate Podcast Script", key="generate_script"):
                     if audio_file_path:
                         # Save the script and audio in the database
                         saved_script = save_script_in_db(show_options[selected_show_name], name, description, [host1, host2, host3], script_content, research_url, audio_file_path)
+                        st.session_state.audio_file_path = audio_file_path  # Store audio file path in session state
                         st.success("Podcast script and audio generated and saved successfully!")
                         # Provide a download button for the generated audio
                         with open(audio_file_path, "rb") as file:
@@ -212,11 +213,11 @@ if st.button("Generate Podcast Script", key="generate_script"):
 
 # Button to generate audio from the script
 if "script_content" in st.session_state:
-    st.text_area("Generated Script", value=st.session_state.script_content, height=300, key="generated_script_display")
+    edited_script_content = st.text_area("Edit Script", value=st.session_state.script_content, height=300, key="edited_script")
     if "facts" in st.session_state:
         st.sidebar.text_area("Facts", value=st.session_state.facts, height=300, key="extracted_facts_display")
     if st.button("Generate Audio"):
-        script_content = st.session_state.script_content  # Retrieve script content from session state
+        script_content = edited_script_content  # Retrieve script content from the editable text area
         voices = {
             host1: available_voices[host1_voice],
             host2: available_voices[host2_voice],
@@ -224,6 +225,7 @@ if "script_content" in st.session_state:
         }
         audio_file_path = generate_audio(script_content, voices, ELEVEN_LABS_API_KEY, intro_clip, outro_clip)
         if audio_file_path:
+            st.session_state.audio_file_path = audio_file_path  # Store audio file path in session state
             # Provide a download button for the generated audio
             with open(audio_file_path, "rb") as file:
                 st.download_button(label="Download Audio", data=file, file_name="podcast_audio.mp3", mime="audio/mpeg")
@@ -234,8 +236,12 @@ if "script_content" in st.session_state:
 
 # Button to save the edited script
 if "script_content" in st.session_state:
-    edited_script_content = st.text_area("Edit Script", value=st.session_state.script_content, height=300, key="edited_script")
     if st.button("Save Script"):
         # Save the edited script to the database
-        save_script_in_db(show_options[selected_show_name], name, description, [host1, host2, host3], edited_script_content, research_url)
+        save_script_in_db(show_options[selected_show_name], name, description, [host1, host2, host3], edited_script_content, research_url, st.session_state.get("audio_file_path"))
         st.success("Edited script saved successfully!")
+        # Provide an audio player for the saved audio
+        if "audio_file_path" in st.session_state:
+            st.audio(st.session_state.audio_file_path, format="audio/mp3")
+            with open(st.session_state.audio_file_path, "rb") as file:
+                st.download_button(label="Download Audio", data=file, file_name="podcast_audio.mp3", mime="audio/mpeg")
